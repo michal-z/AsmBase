@@ -16,7 +16,7 @@ VK_ESCAPE = 01Bh
 SRCCOPY = 0x00CC0020
 
 K_WindowStyle equ WS_SYSMENU+WS_CAPTION+WS_MINIMIZEBOX
-K_WindowPixelsPerSide equ 1024
+K_NumPixelsPerSide equ 1024
 
 virtual at rsp
   fshadow: rb 32
@@ -40,6 +40,13 @@ macro M_GetProcAddress Lib*, Proc* {
 section '.text' code readable executable
 
 falign
+F_RenderJob:
+            mov         ecx, 10000000
+.Loop:      vmulps      xmm0, xmm0, xmm0
+            dec         ecx
+            jnz         .Loop
+            ret
+falign
 F_GetTime:  sub         rsp, K_StackFrameSize
             mov         rax, [.Frequency]
             test        rax, rax
@@ -59,7 +66,6 @@ F_GetTime:  sub         rsp, K_StackFrameSize
             vdivsd      xmm0, xmm1, xmm2
             add         rsp, K_StackFrameSize
             ret
-
 falign
 F_UpdateFrameStats:
             sub         rsp, K_StackFrameSize
@@ -103,31 +109,28 @@ F_UpdateFrameStats:
             inc         [.FrameCount]
             add         rsp, K_StackFrameSize
             ret
-
 falign
-F_CheckAvx2Support:
+F_IsAvx2Supported:
             mov         eax, 1
             cpuid
             and         ecx, 0x58001000          ; check RDRAND, AVX, OSXSAVE, FMA
             cmp         ecx, 0x58001000
-            jne         .NotSupported
+            jne         .No
             mov         eax, 0x7
             xor         ecx, ecx
             cpuid
             and         ebx, 0x20                ; check AVX2
             cmp         ebx, 0x20
-            jne         .NotSupported
+            jne         .No
             xor         ecx, ecx
             xgetbv
             and         eax, 0x6                 ; check OS support
             cmp         eax, 0x6
-            jne         .NotSupported
+            jne         .No
             mov         eax, 1
-            jmp         .Return
-.NotSupported:
-            xor         eax, eax
-.Return:    ret
-
+            jmp         .Yes
+.No:        xor         eax, eax
+.Yes:       ret
 falign
 F_ProcessWindowMessage:
             sub         rsp, 40
@@ -148,7 +151,6 @@ F_ProcessWindowMessage:
             xor         eax, eax
 .Return:    add         rsp, 40
             ret
-
 falign
 F_InitializeWindow:
             sub         rsp, K_StackFrameSize
@@ -170,7 +172,7 @@ F_InitializeWindow:
             test        eax, eax
             jz          .Return
             ; compute window size
-            mov         eax, K_WindowPixelsPerSide
+            mov         eax, K_NumPixelsPerSide
             mov         [.Rect.right], eax
             mov         [.Rect.bottom], eax
             lea         rcx, [.Rect]
@@ -231,20 +233,37 @@ F_InitializeWindow:
 .Return:    mov         rsi, [qword0]
             add         rsp, K_StackFrameSize
             ret
-
 falign
-F_Update:   sub         rsp, 24
+F_Update:   sub         rsp, K_StackFrameSize
+            mov         [qword0], rdi                       ; save
             call        F_UpdateFrameStats
-            add         rsp, 24
+            mov         edi, [G_NumWorkerThreads]
+.Submit:    mov         rcx, [G_RenderJobHandle]
+            icall       SubmitThreadpoolWork
+            dec         edi
+            jnz         .Submit
+            call        F_RenderJob
+            mov         rcx, [G_RenderJobHandle]
+            xor         edx, edx                            ; fCancelPendingCallbacks
+            icall       WaitForThreadpoolWorkCallbacks
+            mov         rdi, [qword0]                       ; restore
+            add         rsp, K_StackFrameSize
             ret
-
 falign
 F_Initialize:
-            sub         rsp, 24
+            sub         rsp, K_StackFrameSize
             call        F_InitializeWindow
-            add         rsp, 24
+            mov         ecx, 0                              ; processor group (up to 64 logical cores per group)
+            icall       GetActiveProcessorCount
+            dec         eax
+            mov         [G_NumWorkerThreads], eax
+            lea         rcx, [F_RenderJob]
+            xor         edx, edx                            ; pointer to user data
+            xor         r8d, r8d                            ; environment
+            icall       CreateThreadpoolWork
+            mov         [G_RenderJobHandle], rax
+            add         rsp, K_StackFrameSize
             ret
-
 falign
 F_Start:    sub         rsp, K_StackFrameSize
             lea         rcx, [.Kernel32]
@@ -260,6 +279,10 @@ F_Start:    sub         rsp, K_StackFrameSize
             inline      M_GetProcAddress, [qword0], GetModuleHandle
             inline      M_GetProcAddress, [qword0], QueryPerformanceFrequency
             inline      M_GetProcAddress, [qword0], QueryPerformanceCounter
+            inline      M_GetProcAddress, [qword0], SubmitThreadpoolWork
+            inline      M_GetProcAddress, [qword0], WaitForThreadpoolWorkCallbacks
+            inline      M_GetProcAddress, [qword0], CreateThreadpoolWork
+            inline      M_GetProcAddress, [qword0], GetActiveProcessorCount
             inline      M_GetProcAddress, [qword1], RegisterClass
             inline      M_GetProcAddress, [qword1], CreateWindowEx
             inline      M_GetProcAddress, [qword1], DefWindowProc
@@ -278,7 +301,7 @@ F_Start:    sub         rsp, K_StackFrameSize
             inline      M_GetProcAddress, [qword2], SelectObject
             inline      M_GetProcAddress, [qword2], BitBlt
             icall       SetProcessDPIAware
-            call        F_CheckAvx2Support
+            call        F_IsAvx2Supported
             test        eax, eax
             jnz         .CpuOk
             xor         ecx, ecx                ; hwnd
@@ -310,7 +333,7 @@ F_Start:    sub         rsp, K_StackFrameSize
             mov         rcx, [G_WindowHdc]
             xor         edx, edx
             xor         r8d, r8d
-            mov         r9d, K_WindowPixelsPerSide
+            mov         r9d, K_NumPixelsPerSide
             mov         dword[fparam5], r9d
             mov         rax, [G_BitmapHdc]
             mov         [fparam6], rax
@@ -334,7 +357,9 @@ G_WindowHandle dq 0
 G_WindowHdc dq 0
 G_BitmapHdc dq 0
 G_Time dq 0
-G_DeltaTime dd 0, 0
+G_DeltaTime dd 0
+G_NumWorkerThreads dd 0
+G_RenderJobHandle dq 0
 
 F_GetTime.StartCounter dq 0
 F_GetTime.Frequency dq 0
@@ -376,12 +401,12 @@ F_InitializeWindow.WindowClass:
 align 8
 F_InitializeWindow.BitmapInfoHeader:
   .biSize dd 40
-  .biWidth dd K_WindowPixelsPerSide
-  .biHeight dd K_WindowPixelsPerSide
+  .biWidth dd K_NumPixelsPerSide
+  .biHeight dd K_NumPixelsPerSide
   .biPlanes dw 1
   .biBitCount dw 32
   .biCompression dd 0
-  .biSizeImage dd K_WindowPixelsPerSide * K_WindowPixelsPerSide
+  .biSizeImage dd K_NumPixelsPerSide * K_NumPixelsPerSide
   .biXPelsPerMeter dd 0
   .biYPelsPerMeter dd 0
   .biClrUsed dd 0
@@ -398,6 +423,10 @@ ExitProcess dq 0
 GetModuleHandle dq 0
 QueryPerformanceFrequency dq 0
 QueryPerformanceCounter dq 0
+SubmitThreadpoolWork dq 0
+WaitForThreadpoolWorkCallbacks dq 0
+CreateThreadpoolWork dq 0
+GetActiveProcessorCount dq 0
 
 RegisterClass dq 0
 CreateWindowEx dq 0
@@ -423,6 +452,10 @@ F_Start.ExitProcess db 'ExitProcess', 0
 F_Start.GetModuleHandle db 'GetModuleHandleA', 0
 F_Start.QueryPerformanceFrequency db 'QueryPerformanceFrequency', 0
 F_Start.QueryPerformanceCounter db 'QueryPerformanceCounter', 0
+F_Start.SubmitThreadpoolWork db 'SubmitThreadpoolWork', 0
+F_Start.WaitForThreadpoolWorkCallbacks db 'WaitForThreadpoolWorkCallbacks', 0
+F_Start.CreateThreadpoolWork db 'CreateThreadpoolWork', 0
+F_Start.GetActiveProcessorCount db 'GetActiveProcessorCount', 0
 
 F_Start.User32 db 'user32.dll', 0
 F_Start.RegisterClass db 'RegisterClassA', 0
