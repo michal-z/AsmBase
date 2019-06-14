@@ -16,20 +16,20 @@ resolution equ 1024
 
 virtual at rsp
   rept 16 n:0 {
-    label sy#n yword
-    label sy#n#.x0 xword
-    label sy#n#.x0.q0 qword
-    label sy#n#.q0 qword
+    label stack.y#n yword
+    label stack.y#n#.x0 xword
+    label stack.y#n#.x0.q0 qword
+    label stack.y#n#.q0 qword
     dq ?
-    label sy#n#.x0.q1 qword
-    label sy#n#.q1 qword
+    label stack.y#n#.x0.q1 qword
+    label stack.y#n#.q1 qword
     dq ?
-    label sy#n#.x1 xword
-    label sy#n#.x1.q0 qword
-    label sy#n#.q2 qword
+    label stack.y#n#.x1 xword
+    label stack.y#n#.x1.q0 qword
+    label stack.y#n#.q2 qword
     dq ?
-    label sy#n#.x1.q1 qword
-    label sy#n#.q3 qword
+    label stack.y#n#.x1.q1 qword
+    label stack.y#n#.q3 qword
     dq ? }
 end virtual
 
@@ -64,9 +64,9 @@ get_time:
             lea         rcx, [.start_counter]
             icall       QueryPerformanceCounter
 .after_init:
-            lea         rcx, [sy1.q0]
+            lea         rcx, [stack.y1.q0]
             icall       QueryPerformanceCounter
-            mov         rcx, [sy1.q0]
+            mov         rcx, [stack.y1.q0]
             sub         rcx, [.start_counter]
             mov         rdx, [.frequency]
             vxorps      xmm0, xmm0, xmm0
@@ -107,15 +107,15 @@ update_frame_stats:
             vdivsd      xmm1, xmm2, xmm1
             vmulsd      xmm1, xmm1, [k_1000000_0]
             mov         [.frame_count], 0
-            lea         rcx, [sy3.q0]
+            lea         rcx, [stack.y3.q0]
             lea         rdx, [.header_format]
             vcvtsd2si   r8, xmm0
             vcvtsd2si   r9, xmm1
             lea         rax, [application_name]
-            mov         [sy1.q0], rax
+            mov         [stack.y1.q0], rax
             icall       wsprintf
             mov         rcx, [window_handle]
-            lea         rdx, [sy3.q0]
+            lea         rdx, [stack.y3.q0]
             icall       SetWindowText
 .after_header_update:
             inc         [.frame_count]
@@ -170,7 +170,7 @@ falign
 initialize_window:
 .stack_size = 24 + 4*32
             sub         rsp, .stack_size
-            mov         [sy3.q0], rsi
+            mov         [stack.y3.q0], rsi
             ; create window class
             lea         rax, [process_window_message]
             lea         rcx, [application_name]
@@ -204,15 +204,15 @@ initialize_window:
             lea         rdx, [application_name]
             mov         r8, rdx
             mov         r9d, WS_VISIBLE+window_style
-            mov         dword[sy1.q0], CW_USEDEFAULT
-            mov         dword[sy1.q1], CW_USEDEFAULT
-            mov         [sy1.q2], r10
-            mov         [sy1.q3], r11
-            mov         [sy2.q0], 0
-            mov         [sy2.q1], 0
+            mov         dword[stack.y1.q0], CW_USEDEFAULT
+            mov         dword[stack.y1.q1], CW_USEDEFAULT
+            mov         [stack.y1.q2], r10
+            mov         [stack.y1.q3], r11
+            mov         [stack.y2.q0], 0
+            mov         [stack.y2.q1], 0
             mov         rax, [.window_class.hInstance]
-            mov         [sy2.q2], rax
-            mov         [sy2.q3], 0
+            mov         [stack.y2.q2], rax
+            mov         [stack.y2.q3], 0
             icall       CreateWindowEx
             test        rax, rax
             jz          .return
@@ -227,8 +227,8 @@ initialize_window:
             lea         rdx, [.bitmap_info_header]
             xor         r8d, r8d
             lea         r9, [window_pixels]
-            mov         [sy1.q0], r8                        ; 0
-            mov         [sy1.q1], r8                        ; 0
+            mov         [stack.y1.q0], r8                   ; 0
+            mov         [stack.y1.q1], r8                   ; 0
             icall       CreateDIBSection
             test        rax, rax
             jz          .return
@@ -245,7 +245,7 @@ initialize_window:
             jz          .return
             ; success
             mov         eax, 1
-.return:    mov         rsi, [sy3.q0]
+.return:    mov         rsi, [stack.y3.q0]
             add         rsp, .stack_size
             ret
 
@@ -253,7 +253,7 @@ falign
 update:
 .stack_size = 24 + 4*32
             sub         rsp, .stack_size
-            mov         [sy1.q0], rdi                       ; save
+            mov         [stack.y1.q0], rdi                  ; save
             call        update_frame_stats
             mov         edi, [num_worker_threads]
 .submit:    mov         rcx, [render_job_handle]
@@ -264,7 +264,7 @@ update:
             mov         rcx, [render_job_handle]
             xor         edx, edx                            ; fCancelPendingCallbacks
             icall       WaitForThreadpoolWorkCallbacks
-            mov         rdi, [sy1.q0]                       ; restore
+            mov         rdi, [stack.y1.q0]                  ; restore
             add         rsp, .stack_size
             ret
 
@@ -292,38 +292,38 @@ start:
             sub         rsp, .stack_size
             lea         rcx, [.kernel32]
             icall       LoadLibrary
-            mov         [sy3.q0], rax                       ; [sy1.q0] = kernel32.dll
+            mov         [stack.y3.q0], rax                  ; [stack.y1.q0] = kernel32.dll
             lea         rcx, [.user32]
             icall       LoadLibrary
-            mov         [sy3.q1], rax                       ; [sy1.q1] = user32.dll
+            mov         [stack.y3.q1], rax                  ; [stack.y1.q1] = user32.dll
             lea         rcx, [.gdi32]
             icall       LoadLibrary
-            mov         [sy3.q2], rax                       ; [sy1.q2] = gdi32.dll
-            inline      get_proc_address, [sy3.q0], ExitProcess
-            inline      get_proc_address, [sy3.q0], GetModuleHandle
-            inline      get_proc_address, [sy3.q0], QueryPerformanceFrequency
-            inline      get_proc_address, [sy3.q0], QueryPerformanceCounter
-            inline      get_proc_address, [sy3.q0], SubmitThreadpoolWork
-            inline      get_proc_address, [sy3.q0], WaitForThreadpoolWorkCallbacks
-            inline      get_proc_address, [sy3.q0], CreateThreadpoolWork
-            inline      get_proc_address, [sy3.q0], GetActiveProcessorCount
-            inline      get_proc_address, [sy3.q1], RegisterClass
-            inline      get_proc_address, [sy3.q1], CreateWindowEx
-            inline      get_proc_address, [sy3.q1], DefWindowProc
-            inline      get_proc_address, [sy3.q1], PeekMessage
-            inline      get_proc_address, [sy3.q1], DispatchMessage
-            inline      get_proc_address, [sy3.q1], LoadCursor
-            inline      get_proc_address, [sy3.q1], SetWindowText
-            inline      get_proc_address, [sy3.q1], AdjustWindowRect
-            inline      get_proc_address, [sy3.q1], PostQuitMessage
-            inline      get_proc_address, [sy3.q1], GetDC
-            inline      get_proc_address, [sy3.q1], wsprintf
-            inline      get_proc_address, [sy3.q1], MessageBox
-            inline      get_proc_address, [sy3.q1], SetProcessDPIAware
-            inline      get_proc_address, [sy3.q2], CreateCompatibleDC
-            inline      get_proc_address, [sy3.q2], CreateDIBSection
-            inline      get_proc_address, [sy3.q2], SelectObject
-            inline      get_proc_address, [sy3.q2], BitBlt
+            mov         [stack.y3.q2], rax                  ; [stack.y1.q2] = gdi32.dll
+            inline      get_proc_address, [stack.y3.q0], ExitProcess
+            inline      get_proc_address, [stack.y3.q0], GetModuleHandle
+            inline      get_proc_address, [stack.y3.q0], QueryPerformanceFrequency
+            inline      get_proc_address, [stack.y3.q0], QueryPerformanceCounter
+            inline      get_proc_address, [stack.y3.q0], SubmitThreadpoolWork
+            inline      get_proc_address, [stack.y3.q0], WaitForThreadpoolWorkCallbacks
+            inline      get_proc_address, [stack.y3.q0], CreateThreadpoolWork
+            inline      get_proc_address, [stack.y3.q0], GetActiveProcessorCount
+            inline      get_proc_address, [stack.y3.q1], RegisterClass
+            inline      get_proc_address, [stack.y3.q1], CreateWindowEx
+            inline      get_proc_address, [stack.y3.q1], DefWindowProc
+            inline      get_proc_address, [stack.y3.q1], PeekMessage
+            inline      get_proc_address, [stack.y3.q1], DispatchMessage
+            inline      get_proc_address, [stack.y3.q1], LoadCursor
+            inline      get_proc_address, [stack.y3.q1], SetWindowText
+            inline      get_proc_address, [stack.y3.q1], AdjustWindowRect
+            inline      get_proc_address, [stack.y3.q1], PostQuitMessage
+            inline      get_proc_address, [stack.y3.q1], GetDC
+            inline      get_proc_address, [stack.y3.q1], wsprintf
+            inline      get_proc_address, [stack.y3.q1], MessageBox
+            inline      get_proc_address, [stack.y3.q1], SetProcessDPIAware
+            inline      get_proc_address, [stack.y3.q2], CreateCompatibleDC
+            inline      get_proc_address, [stack.y3.q2], CreateDIBSection
+            inline      get_proc_address, [stack.y3.q2], SelectObject
+            inline      get_proc_address, [stack.y3.q2], BitBlt
             icall       SetProcessDPIAware
             call        is_avx2_supported
             test        eax, eax
@@ -342,7 +342,7 @@ start:
             xor         edx, edx
             xor         r8d, r8d
             xor         r9d, r9d
-            mov         dword[sy1.q0], PM_REMOVE
+            mov         dword[stack.y1.q0], PM_REMOVE
             icall       PeekMessage
             test        eax, eax
             jz          .update
@@ -358,12 +358,12 @@ start:
             xor         edx, edx
             xor         r8d, r8d
             mov         r9d, resolution
-            mov         dword[sy1.q0], r9d
+            mov         dword[stack.y1.q0], r9d
             mov         rax, [bitmap_hdc]
-            mov         [sy1.q1], rax
-            mov         [sy1.q2], rdx
-            mov         [sy1.q3], rdx
-            mov         dword[sy2.q0], SRCCOPY
+            mov         [stack.y1.q1], rax
+            mov         [stack.y1.q2], rdx
+            mov         [stack.y1.q3], rdx
+            mov         dword[stack.y2.q0], SRCCOPY
             icall       BitBlt
             ; repeat
             jmp         .main_loop
