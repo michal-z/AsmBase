@@ -15,7 +15,7 @@ window_style equ 000080000h+000C00000h+000020000h ; WS_SYSMENU|WS_CAPTION|WS_MIN
 resolution equ 1024
 
 virtual at rsp
-  rept 16 n:0 {
+  rept 32 n:0 {
     label stack.y#n yword
     label stack.y#n#.x0 xword
     label stack.y#n#.x0.q0 qword
@@ -89,21 +89,21 @@ update_frame_stats:
 .after_init:
             call        get_time
             vmovsd      [time], xmm0
-            vsubsd      xmm1, xmm0, [.previous_time]        ; xmm1 = DeltaTime
+            vsubsd      xmm1, xmm0, [.previous_time]        ; xmm1 = delta_time
             vmovsd      [.previous_time], xmm0
             vxorps      xmm2, xmm2, xmm2
-            vcvtsd2ss   xmm1, xmm2, xmm1                    ; xmm1 = (float)DeltaTime
+            vcvtsd2ss   xmm1, xmm2, xmm1                    ; xmm1 = (float)delta_time
             vmovss      [delta_time], xmm1
             vmovsd      xmm1, [.header_update_time]
-            vsubsd      xmm2, xmm0, xmm1                    ; xmm2 = Time - HeaderUpdateTime
+            vsubsd      xmm2, xmm0, xmm1                    ; xmm2 = time - header_update_time
             vmovsd      xmm3, [k_1_0]                       ; xmm3 = 1.0
             vcomisd     xmm2, xmm3
             jb          .after_header_update
             vmovsd      [.header_update_time], xmm0
             mov         eax, [.frame_count]
             vxorpd      xmm1, xmm1, xmm1
-            vcvtsi2sd   xmm1, xmm1, eax                     ; xmm1 = FrameCount
-            vdivsd      xmm0, xmm1, xmm2                    ; xmm0 = FrameCount / (Time - HeaderUpdateTime)
+            vcvtsi2sd   xmm1, xmm1, eax                     ; xmm1 = frame_count
+            vdivsd      xmm0, xmm1, xmm2                    ; xmm0 = frame_count / (time - header_update_time)
             vdivsd      xmm1, xmm2, xmm1
             vmulsd      xmm1, xmm1, [k_1000000_0]
             mov         [.frame_count], 0
