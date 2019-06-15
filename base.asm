@@ -18,19 +18,27 @@ virtual at rsp
   rept 32 n:0 {
     label stack.y#n yword
     label stack.y#n#.x0 xword
-    label stack.y#n#.x0.q0 qword
     label stack.y#n#.q0 qword
-    dq ?
-    label stack.y#n#.x0.q1 qword
+    label stack.y#n#.d0 dword
+    dd ?
+    label stack.y#n#.d1 dword
+    dd ?
     label stack.y#n#.q1 qword
-    dq ?
+    label stack.y#n#.d2 dword
+    dd ?
+    label stack.y#n#.d3 dword
+    dd ?
     label stack.y#n#.x1 xword
-    label stack.y#n#.x1.q0 qword
     label stack.y#n#.q2 qword
-    dq ?
-    label stack.y#n#.x1.q1 qword
+    label stack.y#n#.d4 dword
+    dd ?
+    label stack.y#n#.d5 dword
+    dd ?
     label stack.y#n#.q3 qword
-    dq ? }
+    label stack.y#n#.d6 dword
+    dd ?
+    label stack.y#n#.d7 dword
+    dd ? }
 end virtual
 
 macro icall addr* { call [addr] }
