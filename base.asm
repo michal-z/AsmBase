@@ -13,6 +13,8 @@ SRCCOPY = 0x00CC0020
 
 window_style equ 000080000h+000C00000h+000020000h ; WS_SYSMENU|WS_CAPTION|WS_MINIMIZEBOX
 resolution equ 1024
+tile_resolution equ 64
+num_tiles equ (resolution / tile_resolution) * (resolution / tile_resolution)
 
 virtual at rsp
   rept 32 n:0 {
@@ -54,10 +56,18 @@ section '.text' code readable executable
 
 falign
 render_job:
-            mov         ecx, 1000000
-.loop:      vmulps      xmm0, xmm0, xmm0
-            dec         ecx
-            jnz         .loop
+.stack_size = 24 + 4*32
+            sub         rsp, .stack_size
+.for_each_tile:
+            mov         eax, 1
+            lock xadd   [tile_index], eax
+            cmp         eax, num_tiles
+            jae         .return
+            xor         edx, edx
+            mov         ecx, resolution / tile_resolution
+            div         ecx                                 ; tile_index / num_tiles_per_row
+            jmp         .for_each_tile
+.return:    add         rsp, .stack_size
             ret
 
 falign
@@ -263,6 +273,7 @@ update:
             sub         rsp, .stack_size
             mov         [stack.y1.q0], rdi                  ; save
             call        update_frame_stats
+            mov         [tile_index], 0
             mov         edi, [num_worker_threads]
 .submit:    mov         rcx, [render_job_handle]
             icall       SubmitThreadpoolWork
@@ -382,6 +393,10 @@ start:
 section '.data' data readable writeable
 
 application_name db 'AsmBase', 0
+
+align 64 ; put tile_index on a separate cache line
+tile_index dd 0
+rb 60
 
 align 8
 window_pixels dq 0
