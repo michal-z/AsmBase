@@ -46,6 +46,10 @@ end virtual
 macro icall addr* { call [addr] }
 macro inline name*, [params] { common name params }
 macro falign { align 16 }
+macro proc name*, stack=0 {
+            align 16
+            name:
+            .stack_size = 24 + stack }
 macro get_proc_address lib*, proc* {
             mov         rcx, lib
             lea         rdx, [.#proc]
@@ -54,9 +58,7 @@ macro get_proc_address lib*, proc* {
 
 section '.text' code readable executable
 
-falign
-render_job:
-.stack_size = 24 + 4*32
+proc render_job, 4*32
             sub         rsp, .stack_size
 .for_each_tile:
             mov         eax, 1
@@ -70,9 +72,7 @@ render_job:
 .return:    add         rsp, .stack_size
             ret
 
-falign
-get_time:
-.stack_size = 24 + 4*32
+proc get_time, 4*32
             sub         rsp, .stack_size
             mov         rax, [.frequency]
             test        rax, rax
@@ -94,9 +94,7 @@ get_time:
             add         rsp, .stack_size
             ret
 
-falign
-update_frame_stats:
-.stack_size = 24 + 4*32
+proc update_frame_stats, 4*32
             sub         rsp, .stack_size
             mov         rax, [.previous_time]
             test        rax, rax
@@ -140,8 +138,7 @@ update_frame_stats:
             add         rsp, .stack_size
             ret
 
-falign
-is_avx2_supported:
+proc is_avx2_supported
             mov         eax, 1
             cpuid
             and         ecx, 0x58001000          ; check RDRAND, AVX, OSXSAVE, FMA
@@ -163,9 +160,8 @@ is_avx2_supported:
 .no:        xor         eax, eax
 .yes:       ret
 
-falign
-process_window_message:
-            sub         rsp, 40
+proc process_window_message, 16
+            sub         rsp, .stack_size
             cmp         edx, WM_KEYDOWN
             je          .key_down
             cmp         edx, WM_DESTROY
@@ -181,12 +177,10 @@ process_window_message:
 .destroy:   xor         ecx, ecx
             icall       PostQuitMessage
             xor         eax, eax
-.return:    add         rsp, 40
+.return:    add         rsp, .stack_size
             ret
 
-falign
-initialize_window:
-.stack_size = 24 + 4*32
+proc initialize_window, 4*32
             sub         rsp, .stack_size
             mov         [stack.y3.q0], rsi
             ; create window class
@@ -267,9 +261,7 @@ initialize_window:
             add         rsp, .stack_size
             ret
 
-falign
-update:
-.stack_size = 24 + 4*32
+proc update, 4*32
             sub         rsp, .stack_size
             mov         [stack.y1.q0], rdi                  ; save
             call        update_frame_stats
@@ -287,9 +279,7 @@ update:
             add         rsp, .stack_size
             ret
 
-falign
-init:
-.stack_size = 24 + 4*32
+proc init, 4*32
             sub         rsp, .stack_size
             call        initialize_window
             mov         ecx, 0                              ; processor group (up to 64 logical cores per group)
@@ -304,11 +294,9 @@ init:
             add         rsp, .stack_size
             ret
 
-falign
-start:
-.stack_size = 16*32
-            and         rsp, -32
+proc start, 4*32
             sub         rsp, .stack_size
+            and         rsp, -32
             lea         rcx, [.kernel32]
             icall       LoadLibrary
             mov         [stack.y3.q0], rax                  ; [stack.y1.q0] = kernel32.dll
